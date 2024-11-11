@@ -4,23 +4,40 @@ from torch.nn import functional as F
 
 # Implementation of a deep Q-network.
 class DQN(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=256):
+    def __init__(self, input_dim, output_dim, layers=[]):
+        '''
+        input_dim: number of dimensions for input to network
+        output_dim: number of dimensions for output from network
+        layers: list of dims for each hidden layer as int
+        '''
         super(DQN, self).__init__()
 
-        # One hidden layer.
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        # layers for model
+        self.layers = []
+
+        # First layer
+        self.layers.append(nn.Linear(input_dim, layers[0]))
+        
+        # Create however many linear layers supplied as an argument
+        if len(layers) > 0:
+            for i in range(len(layers) - 1):
+                self.layers.append(nn.Linear(layers[i], layers[i+1]))
+        
         # And the output layer.
-        self.output = nn.Linear(hidden_dim, output_dim)
+        self.layers.append(nn.Linear(layers[-1], output_dim))
 
     def forward(self, x):
-        # Use ReLU activation (nonlinear) for the hidden layer.
-        # TODO: Change this to be linear!
-        x = F.relu(self.fc1(x))
-        return self.output(x)
+        result = x
+        # feedforward the result into each layer
+        for layer in self.layers:
+            result = layer(result)
+            
+        return result
+        
 
 if __name__ == '__main__':
     # Test the model.
-    model = DQN(4, 2)
+    model = DQN(4, 2, [256, 256, 128])
     print(model)
     # Test with a random input.
     print(model(torch.randn(1, 4)))
