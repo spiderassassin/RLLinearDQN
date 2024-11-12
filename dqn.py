@@ -13,7 +13,7 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
 
         # layers for model
-        self.layers = []
+        self.layers = nn.ParameterList()
 
         # First layer
         self.layers.append(nn.Linear(input_dim, layers[0]))

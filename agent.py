@@ -41,7 +41,8 @@ class Agent:
         self.gamma = self.config['gamma']
         self.hidden_dim = self.config['hidden_dim']
         self.stop_on_reward = self.config['stop_on_reward']
-
+        self.layers = [self.hidden_dim for i in range(self.config['layers'])]
+        
         self.loss_function = nn.MSELoss()
         self.optimizer = None
 
@@ -68,7 +69,7 @@ class Agent:
 
         episode_rewards = []
 
-        policy_dqn = DQN(num_states, num_actions, self.hidden_dim).to(device)
+        policy_dqn = DQN(num_states, num_actions, self.layers).to(device)
 
         if training:
             memory = ReplayMemory(maxlen=self.replay_memory_size)
@@ -78,7 +79,7 @@ class Agent:
             step_count = 0
             best_reward = -9999999
 
-            target_dqn = DQN(num_states, num_actions, self.hidden_dim).to(device)
+            target_dqn = DQN(num_states, num_actions, self.layers).to(device)
             # Copy the weights from the policy network to the target network.
             target_dqn.load_state_dict(policy_dqn.state_dict())
 
@@ -212,9 +213,22 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true', help='Train the agent.')
     args = parser.parse_args()
 
-    agent = Agent(config_set=args.config)
-
-    if args.train:
-        agent.run(training=True)
+    # run all training configs
+    if args.config == 'config':
+        with open('config.yml', 'r') as f:
+            config = yaml.safe_load(f)
+            
+            for param_set in config:
+                
+                agent = Agent(config_set=param_set)
+                agent.run(training=True)
+                
     else:
-        agent.run(training=False, render=True)
+        
+
+        agent = Agent(config_set=args.config)
+
+        if args.train:
+            agent.run(training=True)
+        else:
+            agent.run(training=False, render=True)
