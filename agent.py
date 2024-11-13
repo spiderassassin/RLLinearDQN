@@ -30,6 +30,7 @@ class Agent:
         with open('config.yml', 'r') as f:
             self.config = yaml.safe_load(f)[config_set]
         
+        self.config_set = config_set
         self.env_id = self.config['env_id']
         self.replay_memory_size = self.config['replay_memory_size']
         self.mini_batch_size = self.config['mini_batch_size']
@@ -41,7 +42,8 @@ class Agent:
         self.gamma = self.config['gamma']
         self.hidden_dim = self.config['hidden_dim']
         self.stop_on_reward = self.config['stop_on_reward']
-
+        self.layers = [self.hidden_dim for i in range(self.config['layers'])]
+        
         self.loss_function = nn.MSELoss()
         self.optimizer = None
 
@@ -54,7 +56,7 @@ class Agent:
             start_time = datetime.now()
             last_graph_update_time = start_time
 
-            log_message = f"{start_time.strftime(DATE_FORMAT)}: Starting training..."
+            log_message = f"{start_time.strftime(DATE_FORMAT)}: Starting training... ({self.config_set})"
             print(log_message)
             with open(self.LOG_FILE, 'w') as f:
                 f.write(log_message + '\n')
@@ -68,7 +70,7 @@ class Agent:
 
         episode_rewards = []
 
-        policy_dqn = DQN(num_states, num_actions, self.hidden_dim).to(device)
+        policy_dqn = DQN(num_states, num_actions, self.layers).to(device)
 
         if training:
             memory = ReplayMemory(maxlen=self.replay_memory_size)
@@ -78,7 +80,7 @@ class Agent:
             step_count = 0
             best_reward = -9999999
 
-            target_dqn = DQN(num_states, num_actions, self.hidden_dim).to(device)
+            target_dqn = DQN(num_states, num_actions, self.layers).to(device)
             # Copy the weights from the policy network to the target network.
             target_dqn.load_state_dict(policy_dqn.state_dict())
 
@@ -154,6 +156,10 @@ class Agent:
                     if step_count > self.network_sync_rate:
                         target_dqn.load_state_dict(policy_dqn.state_dict())
                         step_count = 0
+                        
+                # stop training
+                if episode_reward >= self.stop_on_reward:
+                    return
 
     # Calculate the target value and train the policy.
     def optimize(self, mini_batch, policy_dqn, target_dqn):
@@ -210,11 +216,25 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train or test a DQN agent.')
     parser.add_argument('config', help='Name of config set in config.yml.')
     parser.add_argument('--train', action='store_true', help='Train the agent.')
+    parser.add_argument('--all', action='store_true', help='Run full training suite.')
     args = parser.parse_args()
 
-    agent = Agent(config_set=args.config)
-
-    if args.train:
-        agent.run(training=True)
+    # run all training configs
+    if args.all:
+        with open(f'{args.config}.yml', 'r') as f:
+            config = yaml.safe_load(f)
+            
+            for param_set in config:
+                
+                agent = Agent(config_set=param_set)
+                agent.run(training=True)
+                
     else:
-        agent.run(training=False, render=True)
+        
+
+        agent = Agent(config_set=args.config)
+
+        if args.train:
+            agent.run(training=True)
+        else:
+            agent.run(training=False, render=True)
