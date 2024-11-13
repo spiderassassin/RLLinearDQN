@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "agent.py",
             "console": "integratedTerminal",
-            "args": ["cartpole1", "--train"]
+            "args": ["config", "--train", "--all"]
         }
     ]
 }
