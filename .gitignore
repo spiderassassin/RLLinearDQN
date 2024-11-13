@@ -163,3 +163,5 @@ cython_debug/
 
 # Project-specific
 runs/
+# Don't ignore the .log file in the results folder that was previously excluded
+!results/**/*.log

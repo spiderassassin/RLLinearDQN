@@ -23,10 +23,16 @@ pip install pyyaml
 
 The provided `launch.json` file can be used to debug the program through VS Code. In the Run and Debug tab, just set it as the configuration file, then click the green play button.
 
-Otherwise, train using the following command:
+Otherwise, train on one config spec using the following command:
 
 ```
 python3 agent.py cartpole1 --train
+```
+
+Or to train for all specs in the config file (USE THIS COMMAND):
+
+```
+python3 agent.py config --all --train
 ```
 
 And to test with visualization:
@@ -37,4 +43,4 @@ python3 agent.py cartpole1
 
 ## Acknowledgements
 
-DQN implementation: slightly adapted from [Johnny Code's DQN tutorial video series](https://www.youtube.com/playlist?list=PL58zEckBH8fCMIVzQCRSZVPUp3ZAVagWi).
+DQN implementation: adapted from [Johnny Code's DQN tutorial video series](https://www.youtube.com/playlist?list=PL58zEckBH8fCMIVzQCRSZVPUp3ZAVagWi).
