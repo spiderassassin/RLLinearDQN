@@ -10,7 +10,7 @@ import random
 import torch
 import yaml
 from datetime import datetime, timedelta
-from dqn import DQN
+from linear import LinearNN
 from experience_replay import ReplayMemory
 from torch import nn
 
@@ -37,7 +37,6 @@ class Agent:
         self.epsilon_init = self.config['epsilon_init']
         self.epsilon_decay = self.config['epsilon_decay']
         self.epsilon_min = self.config['epsilon_min']
-        self.network_sync_rate = self.config['network_sync_rate']
         self.alpha = self.config['alpha']
         self.gamma = self.config['gamma']
         self.hidden_dim = self.config['hidden_dim']
@@ -70,26 +69,20 @@ class Agent:
 
         episode_rewards = []
 
-        policy_dqn = DQN(num_states, num_actions, self.layers).to(device)
+        policy_network = LinearNN(num_states, num_actions, self.layers).to(device)
 
         if training:
             memory = ReplayMemory(maxlen=self.replay_memory_size)
             epsilon = self.epsilon_init
             epsilon_history = []
-            # Track the number of steps taken, used for syncing the networks.
-            step_count = 0
             best_reward = -9999999
 
-            target_dqn = DQN(num_states, num_actions, self.layers).to(device)
-            # Copy the weights from the policy network to the target network.
-            target_dqn.load_state_dict(policy_dqn.state_dict())
-
             # Initialize the optimizer.
-            self.optimizer = torch.optim.Adam(policy_dqn.parameters(), lr=self.alpha)
+            self.optimizer = torch.optim.Adam(policy_network.parameters(), lr=self.alpha)
         else:
             # Load the model from file.
-            policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
-            policy_dqn.eval()
+            policy_network.load_state_dict(torch.load(self.MODEL_FILE))
+            policy_network.eval()
 
         for episode in itertools.count():
             s, _ = env.reset()
@@ -109,7 +102,7 @@ class Agent:
                     # Save time, calculates gradient automatically, but don't need it for evaluation.
                     with torch.no_grad():
                         # Argmax index corresponds to the optimal action.
-                        a = policy_dqn(s.unsqueeze(dim=0)).squeeze().argmax()
+                        a = policy_network(s.unsqueeze(dim=0)).squeeze().argmax()
 
                 # Take the action.
                 s_next, r, term, _, _ = env.step(a.item())
@@ -120,7 +113,6 @@ class Agent:
 
                 if training:
                     memory.append(s, a, r, s_next, term)
-                    step_count += 1
 
                 s = s_next
 
@@ -133,7 +125,7 @@ class Agent:
                     with open(self.LOG_FILE, 'a') as f:
                         f.write(log_message + '\n')
 
-                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
+                    torch.save(policy_network.state_dict(), self.MODEL_FILE)
                     best_reward = episode_reward
 
                 # Update graph every so often.
@@ -146,23 +138,18 @@ class Agent:
                 if len(memory) > self.mini_batch_size:
                     # Sample a mini batch.
                     mini_batch = memory.sample(self.mini_batch_size)
-                    self.optimize(mini_batch, policy_dqn, target_dqn)
+                    self.optimize(mini_batch, policy_network)
 
                     # Decay epsilon.
                     epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
                     epsilon_history.append(epsilon)
-                    
-                    # Every so often, update the target network.
-                    if step_count > self.network_sync_rate:
-                        target_dqn.load_state_dict(policy_dqn.state_dict())
-                        step_count = 0
                         
                 # stop training
                 if episode_reward >= self.stop_on_reward:
                     return
 
     # Calculate the target value and train the policy.
-    def optimize(self, mini_batch, policy_dqn, target_dqn):
+    def optimize(self, mini_batch, policy_network):
         # Extract each component of the entire mini batch.
         s, a, r, s_next, term = zip(*mini_batch)
 
@@ -175,9 +162,9 @@ class Agent:
         term = torch.tensor(term).float().to(device)
 
         with torch.no_grad():
-            target = r + (1 - term) * self.gamma * target_dqn(s_next).max(dim=1)[0]
+            target = r + (1 - term) * self.gamma * policy_network(s_next).max(dim=1)[0]
         
-        prediction = policy_dqn(s).gather(dim=1, index=a.unsqueeze(dim=1)).squeeze()
+        prediction = policy_network(s).gather(dim=1, index=a.unsqueeze(dim=1)).squeeze()
         
         # Calculate the loss.
         loss = self.loss_function(prediction, target)
