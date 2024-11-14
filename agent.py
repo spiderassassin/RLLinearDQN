@@ -41,6 +41,7 @@ class Agent:
         self.gamma = self.config['gamma']
         self.hidden_dim = self.config['hidden_dim']
         self.stop_on_reward = self.config['stop_on_reward']
+        self.stop_after_episodes = self.config['stop_after_episodes']
         self.layers = [self.hidden_dim for i in range(self.config['layers'])]
         
         self.loss_function = nn.MSELoss()
@@ -144,8 +145,15 @@ class Agent:
                     epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
                     epsilon_history.append(epsilon)
                         
-                # stop training
+                # Stop training if reached the target reward.
                 if episode_reward >= self.stop_on_reward:
+                    return
+                # Or if it's been too long.
+                if episode > self.stop_after_episodes:
+                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Giving up after {episode} episodes."
+                    print(log_message)
+                    with open(self.LOG_FILE, 'a') as f:
+                        f.write(log_message + '\n')
                     return
 
     # Calculate the target value and train the policy.
