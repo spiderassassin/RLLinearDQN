@@ -43,6 +43,7 @@ class Agent:
         self.stop_on_reward = self.config['stop_on_reward']
         self.stop_after_episodes = self.config['stop_after_episodes']
         self.layers = [self.hidden_dim for i in range(self.config['layers'])]
+        self.seeds = self.config['seeds']
         
         self.loss_function = nn.MSELoss()
         self.optimizer = None
@@ -52,6 +53,15 @@ class Agent:
         self.GRAPH_FILE = os.path.join(RUNS_DIR, f"{config_set}.png")
 
     def run(self, training=True, render=False):
+        for _ in range(self.seeds):
+            seed = random.randint(0, 100000)
+            print(f"Seed: {seed}")
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+            self.run_single(seed, training, render)
+
+    def run_single(self, seed, training=True, render=False):
         if training:
             start_time = datetime.now()
             last_graph_update_time = start_time
@@ -68,6 +78,7 @@ class Agent:
         num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
 
+        timestep = 0
         episode_rewards = []
 
         policy_network = LinearNN(num_states, num_actions, self.layers).to(device)
@@ -86,7 +97,7 @@ class Agent:
             policy_network.eval()
 
         for episode in itertools.count():
-            s, _ = env.reset()
+            s, _ = env.reset(seed=seed + timestep)
             # Convert to tensor for pytorch.
             s = torch.tensor(s, dtype=torch.float, device=device)
 
@@ -116,6 +127,7 @@ class Agent:
                     memory.append(s, a, r, s_next, term)
 
                 s = s_next
+                timestep += 1
 
             episode_rewards.append(episode_reward)
 
@@ -206,6 +218,9 @@ class Agent:
         fig.savefig(self.GRAPH_FILE)
         plt.close(fig)
 
+    def save_aggregate_graph():
+        pass
+
 if __name__ == '__main__':
     # Parse command line arguments.
     parser = argparse.ArgumentParser(description='Train or test a DQN agent.')
@@ -220,7 +235,6 @@ if __name__ == '__main__':
             config = yaml.safe_load(f)
             
             for param_set in config:
-                
                 agent = Agent(config_set=param_set)
                 agent.run(training=True)
                 
