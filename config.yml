@@ -11,6 +11,7 @@ cartpole1:
   layers: 1
   stop_on_reward: 100000
   stop_after_episodes: 200000
+  seeds: 1
 
 cartpole1-10:
   env_id: CartPole-v1
@@ -25,6 +26,7 @@ cartpole1-10:
   layers: 10
   stop_on_reward: 100000
   stop_after_episodes: 200000
+  seeds: 1
 
 cartpole1-100:
   env_id: CartPole-v1
@@ -39,6 +41,7 @@ cartpole1-100:
   layers: 100
   stop_on_reward: 100000
   stop_after_episodes: 200000
+  seeds: 1
 
 cartpole1-1000:
   env_id: CartPole-v1
@@ -53,6 +56,7 @@ cartpole1-1000:
   layers: 1000
   stop_on_reward: 100000
   stop_after_episodes: 200000
+  seeds: 1
 
 cartpole1-10000:
   env_id: CartPole-v1
@@ -67,3 +71,4 @@ cartpole1-10000:
   layers: 10000
   stop_on_reward: 100000
   stop_after_episodes: 200000
+  seeds: 1
