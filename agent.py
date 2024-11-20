@@ -21,13 +21,16 @@ os.makedirs(RUNS_DIR, exist_ok=True)
 matplotlib.use('Agg')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+#if(torch.backends.mps.is_available()):
+    #device = 'mps'
 # Can also force CPU if that ends up being faster.
 # device = 'cpu'
 
 # The RL agent that will interact with the environment.
 class Agent:
-    def __init__(self, config_set):
-        with open('config.yml', 'r') as f:
+    def __init__(self, config_set, config_name):
+        #HAVE TO CHANGE THE NAME OF THE YAML FILE
+        with open(config_name, 'r') as f:
             self.config = yaml.safe_load(f)[config_set]
         
         self.config_set = config_set
@@ -84,7 +87,7 @@ class Agent:
                 f.write(log_message + '\n')
 
         # TODO: try with flappy bird if cart pole works!
-        # env = gym.make("FlappyBird-v0", render_mode="human", use_lidar=True)
+        #env = gym.make("FlappyBird-v0", render_mode="human" if render else None)
         env = gym.make(self.env_id, render_mode="human" if render else None)
 
         num_states = env.observation_space.shape[0]
@@ -264,16 +267,17 @@ if __name__ == '__main__':
             avg_durations = {}
             
             for param_set in config:
-                agent = Agent(config_set=param_set)
+
+                print(param_set)
+                agent = Agent(config_set=param_set, config_name=f'{args.config}.yml')
                 avg_duration = agent.run(training=True)
                 avg_durations[config[param_set]['layers']] = avg_duration
 
             save_aggregate_graph(avg_durations)
+
                 
     else:
-        
-
-        agent = Agent(config_set=args.config)
+        agent = Agent(config_set=args.config, config_name=f'{args.config}.yml')
 
         if args.train:
             agent.run(training=True)
