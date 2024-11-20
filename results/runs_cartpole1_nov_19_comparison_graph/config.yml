@@ -23,7 +23,7 @@ cartpole1-10:
   alpha: 0.01
   gamma: 0.99
   hidden_dim: 10
-  layers: 10
+  layers: 2
   stop_on_reward: 100000
   stop_after_episodes: 200000
   seeds: 1
@@ -38,7 +38,7 @@ cartpole1-100:
   alpha: 0.01
   gamma: 0.99
   hidden_dim: 10
-  layers: 100
+  layers: 4
   stop_on_reward: 100000
   stop_after_episodes: 200000
   seeds: 1
@@ -53,7 +53,7 @@ cartpole1-1000:
   alpha: 0.01
   gamma: 0.99
   hidden_dim: 10
-  layers: 1000
+  layers: 8
   stop_on_reward: 100000
   stop_after_episodes: 200000
   seeds: 1
@@ -68,7 +68,7 @@ cartpole1-10000:
   alpha: 0.01
   gamma: 0.99
   hidden_dim: 10
-  layers: 10000
+  layers: 16
   stop_on_reward: 100000
   stop_after_episodes: 200000
   seeds: 1
