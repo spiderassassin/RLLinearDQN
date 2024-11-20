@@ -1,0 +1,69 @@
+cartpole1-1:
+  env_id: CartPole-v1
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 10
+  layers: 1
+  stop_on_reward: 100000
+  stop_after_episodes: 300000
+
+cartpole1-2:
+  env_id: CartPole-v1
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 10
+  layers: 2
+  stop_on_reward: 100000
+  stop_after_episodes: 300000
+
+cartpole1-3:
+  env_id: CartPole-v1
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 10
+  layers: 3
+  stop_on_reward: 100000
+  stop_after_episodes: 300000
+
+cartpole1-4:
+  env_id: CartPole-v1
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 10
+  layers: 4
+  stop_on_reward: 100000
+  stop_after_episodes: 300000
+
+cartpole1-5:
+  env_id: CartPole-v1
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 10
+  layers: 5
+  stop_on_reward: 100000
+  stop_after_episodes: 300000
