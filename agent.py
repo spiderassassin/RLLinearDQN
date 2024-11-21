@@ -277,6 +277,10 @@ if __name__ == '__main__':
     parser.add_argument('--all', action='store_true', help='Run full training suite.')
     args = parser.parse_args()
 
+    # Clean out the runs directory.
+    for file in os.listdir(RUNS_DIR):
+        os.remove(os.path.join(RUNS_DIR, file))
+
     # run all training configs
     if args.all:
         with open(f'{args.config}.yml', 'r') as f:
