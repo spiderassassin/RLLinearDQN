@@ -17,6 +17,7 @@ from torch import nn
 DATE_FORMAT = "%m-%d %H:%M:%S"
 RUNS_DIR = "runs"
 os.makedirs(RUNS_DIR, exist_ok=True)
+AGGREGATE_FILE = os.path.join(RUNS_DIR, "aggregate.log")
 # Save images to file.
 matplotlib.use('Agg')
 
@@ -58,22 +59,32 @@ class Agent:
     # RUn a specific configuration with multiple seeds, returning the average number of timesteps it took to reach the max reward.
     def run(self, training=True, render=False):
         durations = []
+        total_layer_passes = []
         for _ in range(self.seeds):
             seed = random.randint(0, 100000)
-            print(f"Seed: {seed}")
+            log_message = f"Seed: {seed}"
+            print(log_message)
+            with open(self.LOG_FILE, 'a') as f:
+                f.write(log_message + '\n')
+            with open(AGGREGATE_FILE, 'a') as f:
+                f.write(log_message + '\n')
             torch.manual_seed(seed)
             np.random.seed(seed)
             random.seed(seed)
-            duration = self.run_single(seed, training, render)
+            duration, layer_passes = self.run_single(seed, training, render)
             durations.append(duration)
+            total_layer_passes.append(layer_passes)
 
         avg_duration = np.mean(durations)
-        log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Average duration: {avg_duration:0.1f}"
+        avg_layer_passes = np.mean(total_layer_passes)
+        log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Average duration: {avg_duration:0.1f} timesteps, Average layer passes: {avg_layer_passes:0.1f} ({self.config_set})"
         print(log_message)
         with open(self.LOG_FILE, 'a') as f:
             f.write(log_message + '\n')
+        with open(AGGREGATE_FILE, 'a') as f:
+            f.write(log_message + '\n')
         
-        return avg_duration
+        return avg_duration, avg_layer_passes
 
     # Runs with a single seed, returning the number of timesteps it took to reach the max reward.
     def run_single(self, seed, training=True, render=False):
@@ -85,6 +96,8 @@ class Agent:
             print(log_message)
             with open(self.LOG_FILE, 'w') as f:
                 f.write(log_message + '\n')
+            with open(AGGREGATE_FILE, 'a') as f:
+                f.write(log_message + '\n')
 
         # TODO: try with flappy bird if cart pole works!
         #env = gym.make("FlappyBird-v0", render_mode="human" if render else None)
@@ -94,6 +107,7 @@ class Agent:
         num_actions = env.action_space.n
 
         timestep = 0
+        layer_passes = 0
         episode_rewards = []
 
         policy_network = LinearNN(num_states, num_actions, self.layers).to(device)
@@ -112,7 +126,8 @@ class Agent:
             policy_network.eval()
 
         for episode in itertools.count():
-            s, _ = env.reset(seed=seed + timestep)
+            env_seed = seed if episode == 0 else None
+            s,_ = env.reset(seed=env_seed)
             # Convert to tensor for pytorch.
             s = torch.tensor(s, dtype=torch.float, device=device)
 
@@ -130,6 +145,7 @@ class Agent:
                     with torch.no_grad():
                         # Argmax index corresponds to the optimal action.
                         a = policy_network(s.unsqueeze(dim=0)).squeeze().argmax()
+                        layer_passes += len(self.layers)
 
                 # Take the action.
                 s_next, r, term, _, _ = env.step(a.item())
@@ -151,6 +167,8 @@ class Agent:
                     log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward: {episode_reward:0.1f} ({(episode_reward - best_reward) / best_reward * 100:+.1f}%) at episode {episode}, saving model..."
                     print(log_message)
                     with open(self.LOG_FILE, 'a') as f:
+                        f.write(log_message + '\n')
+                    with open(AGGREGATE_FILE, 'a') as f:
                         f.write(log_message + '\n')
 
                     torch.save(policy_network.state_dict(), self.MODEL_FILE)
@@ -174,14 +192,16 @@ class Agent:
                         
                 # Stop training if reached the target reward.
                 if episode_reward >= self.stop_on_reward:
-                    return timestep
+                    return timestep, layer_passes
                 # Or if it's been too long.
                 if episode > self.stop_after_episodes:
                     log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Giving up after {episode} episodes."
                     print(log_message)
                     with open(self.LOG_FILE, 'a') as f:
                         f.write(log_message + '\n')
-                    return timestep
+                    with open(AGGREGATE_FILE, 'a') as f:
+                        f.write(log_message + '\n')
+                    return timestep, layer_passes
 
     # Calculate the target value and train the policy.
     def optimize(self, mini_batch, policy_network):
@@ -235,7 +255,7 @@ class Agent:
 
 
 # Save the aggregate graph of the number of layers vs. the average duration taken to reach the max reward.
-def save_aggregate_graph(data):
+def save_aggregate_graph(data, filename):
     fig = plt.figure(1)
     keys = data.keys()
     values = data.values()
@@ -246,7 +266,7 @@ def save_aggregate_graph(data):
 
     plt.xlabel('Number of Layers')
     plt.ylabel('Average Duration to Reach Max Reward')
-    fig.savefig(os.path.join(RUNS_DIR, "aggregate.png"))
+    fig.savefig(os.path.join(RUNS_DIR, filename))
     plt.close(fig)
 
 
@@ -258,6 +278,10 @@ if __name__ == '__main__':
     parser.add_argument('--all', action='store_true', help='Run full training suite.')
     args = parser.parse_args()
 
+    # Clean out the runs directory.
+    for file in os.listdir(RUNS_DIR):
+        os.remove(os.path.join(RUNS_DIR, file))
+
     # run all training configs
     if args.all:
         with open(f'{args.config}.yml', 'r') as f:
@@ -265,15 +289,19 @@ if __name__ == '__main__':
 
             # Track the number of layers and resulting duration taken to reach the max reward.
             avg_durations = {}
+            # Do similar for the number of layers that data is passed through.
+            avg_layer_passes = {}
             
             for param_set in config:
 
                 print(param_set)
                 agent = Agent(config_set=param_set, config_name=f'{args.config}.yml')
-                avg_duration = agent.run(training=True)
+                avg_duration, avg_layer_pass = agent.run(training=True)
                 avg_durations[config[param_set]['layers']] = avg_duration
+                avg_layer_passes[config[param_set]['layers']] = avg_layer_pass
 
-            save_aggregate_graph(avg_durations)
+            save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
+            save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")
 
                 
     else:
