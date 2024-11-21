@@ -126,7 +126,8 @@ class Agent:
             policy_network.eval()
 
         for episode in itertools.count():
-            s, _ = env.reset(seed=seed + timestep)
+            env_seed = seed if episode == 0 else None
+            s,_ = env.reset(seed=env_seed)
             # Convert to tensor for pytorch.
             s = torch.tensor(s, dtype=torch.float, device=device)
 
