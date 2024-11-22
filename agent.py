@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from linear import LinearNN
 from experience_replay import ReplayMemory
 from torch import nn
+import shutil
 
 DATE_FORMAT = "%m-%d %H:%M:%S"
 RUNS_DIR = "runs"
@@ -29,7 +30,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # The RL agent that will interact with the environment.
 class Agent:
-    def __init__(self, config_set, config_name):
+    # layers should be none if not using --max flag
+    def __init__(self, config_set, config_name, layers=None):
         #HAVE TO CHANGE THE NAME OF THE YAML FILE
         with open(config_name, 'r') as f:
             self.config = yaml.safe_load(f)[config_set]
@@ -47,7 +49,10 @@ class Agent:
         self.hidden_dim = self.config['hidden_dim']
         self.stop_on_reward = self.config['stop_on_reward']
         self.stop_after_episodes = self.config['stop_after_episodes']
-        self.layers = [self.hidden_dim for i in range(self.config['layers'])]
+        
+        num_layers = self.config['layers'] if layers is None else layers
+        
+        self.layers = [self.hidden_dim for i in range(num_layers)]
         self.seeds = self.config['seeds']
         
         self.loss_function = nn.MSELoss()
@@ -319,14 +324,24 @@ if __name__ == '__main__':
     parser.add_argument('config', help='Name of config set in config file.')
     parser.add_argument('--train', action='store_true', help='Train the agent.')
     parser.add_argument('--all', action='store_true', help='Run full training suite.')
+    parser.add_argument('--max', action='store_true', help='Run config set for one to specified number of layers.')
     args = parser.parse_args()
 
     # Clean out the runs directory.
     for file in os.listdir(RUNS_DIR):
-        os.remove(os.path.join(RUNS_DIR, file))
+        
+        # by default remove files
+        try:
+        
+            os.remove(os.path.join(RUNS_DIR, file))
+            
+        # remove directories if present (don't need to be empty)
+        except:
+            
+            shutil.rmtree(os.path.join(RUNS_DIR, file))
 
-    # run all training configs
-    if args.all:
+    # run all training configs OR run incremental layers
+    if args.all or args.max:
         with open(f'{args.file}.yml', 'r') as f:
             config = yaml.safe_load(f)
 
@@ -335,15 +350,37 @@ if __name__ == '__main__':
             # Do similar for the number of layers that data is passed through.
             avg_layer_passes = {}
             
-            for param_set in config:
+            # If using --max flag, include only one config set in your config file!
+            if args.max:
+                
+                # this is why we can only have one config set in the file (no guarantee on ordering of dict keys)
+                only_config = list(config.keys())[0]
+                agent = Agent(config_set=only_config, config_name=f'{args.file}.yml')
+                max_layers = len(agent.layers)
 
-                print(param_set)
-                agent = Agent(config_set=param_set, config_name=f'{args.config}.yml')
-                avg_duration, avg_layer_pass = agent.run(training=True)
-                avg_durations[config[param_set]['layers']] = avg_duration
-                avg_layer_passes[config[param_set]['layers']] = avg_layer_pass
-                save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
-                save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")
+                print(f"BEGINNNING TRAINING\nTOTAL NUMBER OF LAYERS == {max_layers}")
+                
+                for i in range(1,max_layers+1):
+                    
+                    print(f"\nLAYERS = {i}\n")
+                    agent = Agent(config_set=only_config, config_name=f'{args.file}.yml', layers=i)
+                    avg_duration, avg_layer_pass = agent.run(training=True)
+                    avg_durations[i] = avg_duration
+                    avg_layer_passes[i] = avg_layer_pass
+                    save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
+                    save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")
+                
+            else:
+            
+                for param_set in config:
+
+                    print(param_set)
+                    agent = Agent(config_set=param_set, config_name=f'{args.file}.yml')
+                    avg_duration, avg_layer_pass = agent.run(training=True)
+                    avg_durations[config[param_set]['layers']] = avg_duration
+                    avg_layer_passes[config[param_set]['layers']] = avg_layer_pass
+                    save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
+                    save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")        
 
                 
     else:
