@@ -299,9 +299,8 @@ if __name__ == '__main__':
                 avg_duration, avg_layer_pass = agent.run(training=True)
                 avg_durations[config[param_set]['layers']] = avg_duration
                 avg_layer_passes[config[param_set]['layers']] = avg_layer_pass
-
-            save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
-            save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")
+                save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
+                save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")
 
                 
     else:
