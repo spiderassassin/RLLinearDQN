@@ -34,6 +34,7 @@ class Agent:
         with open(config_name, 'r') as f:
             self.config = yaml.safe_load(f)[config_set]
         
+        self.config_name = config_name
         self.config_set = config_set
         self.env_id = self.config['env_id']
         self.replay_memory_size = self.config['replay_memory_size']
@@ -116,7 +117,7 @@ class Agent:
             memory = ReplayMemory(maxlen=self.replay_memory_size)
             epsilon = self.epsilon_init
             epsilon_history = []
-            best_reward = -9999999
+            best_reward = -1
 
             # Initialize the optimizer.
             self.optimizer = torch.optim.Adam(policy_network.parameters(), lr=self.alpha)
@@ -156,6 +157,7 @@ class Agent:
 
                 if training:
                     memory.append(s, a, r, s_next, term)
+                    pass
 
                 s = s_next
                 timestep += 1
@@ -177,7 +179,15 @@ class Agent:
                 # Update graph every so often.
                 current_time = datetime.now()
                 if current_time - last_graph_update_time > timedelta(seconds=10):
-                    self.save_graph(episode_rewards, epsilon_history)
+                    self.save_graph(episode_rewards, epsilon_history, seed)
+                    self.save_rate_graph(episode_rewards, space=1, seed=seed)
+                    self.save_rate_graph(episode_rewards, space=50, seed=seed)
+                    self.save_rate_graph(episode_rewards, space=100, seed=seed)
+                    self.save_rate_graph(episode_rewards, space=200, seed=seed)
+                    self.save_rate_graph(episode_rewards, space=300, seed=seed)
+                    self.save_rate_graph(episode_rewards, space=400, seed=seed)
+                    self.save_rate_graph(episode_rewards, space=500, seed=seed)
+
                     last_graph_update_time = current_time
 
                 # Once we have enough experience.
@@ -229,7 +239,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
 
-    def save_graph(self, episode_rewards, epsilon_history):
+    def save_graph(self, episode_rewards, epsilon_history, seed=None):
         fig = plt.figure(1)
 
         # Plot average rewards (y) against episodes (x).
@@ -250,9 +260,41 @@ class Agent:
 
         plt.subplots_adjust(wspace=1.0, hspace=1.0)
 
-        fig.savefig(self.GRAPH_FILE)
+        fig.savefig(f'{self.GRAPH_FILE[:-4]}_{seed}.png')
         plt.close(fig)
 
+    def save_rate_graph(self, episode_rewards, space=1, seed=None):
+        
+        if len(episode_rewards) < space:
+            return
+        
+        fig = plt.figure(1)
+
+        avg_rewards = np.zeros(len(episode_rewards))
+        for i in range(len(avg_rewards)):
+            avg_rewards[i] = np.mean(episode_rewards[max(0, i-99):(i+1)])
+        # Plot on a 1 row x 2 column grid, at cell 1.
+        plt.subplot(111)
+        plt.xlabel(f"Number of Episodes (x{space})")
+        plt.ylabel('Change in Average Reward')
+        
+        grad = np.gradient(avg_rewards[::space], space)
+        plt.plot(grad)
+        
+        avg_avg = np.zeros(len(grad))
+        for i in range(10,len(grad)):
+            avg_avg[i] = np.mean(grad[max(0, i-9):(i+1)])
+        plt.plot(avg_avg)
+        
+        # Plot epsilon decay (y) against episodes (x).
+
+        plt.subplots_adjust(wspace=1.0, hspace=1.0)
+
+        if not os.path.exists(f"./runs/{self.config_name}/{self.config_set}"):
+            os.makedirs(f"./runs/{self.config_name}/{self.config_set}")
+
+        fig.savefig(f"./runs/{self.config_name}/{self.config_set}/{space}_rate_{seed}.png")
+        plt.close(fig)
 
 # Save the aggregate graph of the number of layers vs. the average duration taken to reach the max reward.
 def save_aggregate_graph(data, filename):
@@ -273,7 +315,8 @@ def save_aggregate_graph(data, filename):
 if __name__ == '__main__':
     # Parse command line arguments.
     parser = argparse.ArgumentParser(description='Train or test a DQN agent.')
-    parser.add_argument('config', help='Name of config set in config.yml.')
+    parser.add_argument('file', help="Name of the config file.")
+    parser.add_argument('config', help='Name of config set in config file.')
     parser.add_argument('--train', action='store_true', help='Train the agent.')
     parser.add_argument('--all', action='store_true', help='Run full training suite.')
     args = parser.parse_args()
@@ -284,7 +327,7 @@ if __name__ == '__main__':
 
     # run all training configs
     if args.all:
-        with open(f'{args.config}.yml', 'r') as f:
+        with open(f'{args.file}.yml', 'r') as f:
             config = yaml.safe_load(f)
 
             # Track the number of layers and resulting duration taken to reach the max reward.
@@ -304,7 +347,7 @@ if __name__ == '__main__':
 
                 
     else:
-        agent = Agent(config_set=args.config, config_name=f'{args.config}.yml')
+        agent = Agent(config_set=args.config, config_name=f'{args.file}.yml')
 
         if args.train:
             agent.run(training=True)
