@@ -1,5 +1,4 @@
 import argparse
-import flappy_bird_gymnasium
 import gymnasium as gym
 import itertools
 import matplotlib
@@ -7,13 +6,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import random
+import shutil
 import torch
 import yaml
-from datetime import datetime, timedelta
-from linear import LinearNN
 from experience_replay import ReplayMemory
+from datetime import datetime, timedelta
+from nonlinear import NonLinearNN
+from linear import LinearNN
+from linear_resnet import LinearResNetNN
 from torch import nn
-import shutil
 
 DATE_FORMAT = "%m-%d %H:%M:%S"
 RUNS_DIR = "runs"
@@ -30,14 +31,12 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # The RL agent that will interact with the environment.
 class Agent:
-    # layers should be none if not using --max flag
-    def __init__(self, config_set, config_name, layers=None):
-        #HAVE TO CHANGE THE NAME OF THE YAML FILE
-        with open(config_name, 'r') as f:
+    def __init__(self, config_set, config_file, layers, network_type='linear'):
+        with open(config_file, 'r') as f:
             self.config = yaml.safe_load(f)[config_set]
-        
-        self.config_name = config_name
+
         self.config_set = config_set
+        self.config_file = config_file
         self.env_id = self.config['env_id']
         self.replay_memory_size = self.config['replay_memory_size']
         self.mini_batch_size = self.config['mini_batch_size']
@@ -47,14 +46,15 @@ class Agent:
         self.alpha = self.config['alpha']
         self.gamma = self.config['gamma']
         self.hidden_dim = self.config['hidden_dim']
+        self.layer_increment = self.config['layer_increment']
+        self.min_layers = self.config['min_layers']
+        self.max_layers = self.config['max_layers']
         self.stop_on_reward = self.config['stop_on_reward']
         self.stop_after_episodes = self.config['stop_after_episodes']
-        
-        num_layers = self.config['layers'] if layers is None else layers
-        
-        self.layers = [self.hidden_dim for i in range(num_layers)]
         self.seeds = self.config['seeds']
-        
+
+        self.layers = [self.hidden_dim for _ in range(layers)]
+        self.network_type = network_type
         self.loss_function = nn.MSELoss()
         self.optimizer = None
 
@@ -62,34 +62,35 @@ class Agent:
         self.MODEL_FILE = os.path.join(RUNS_DIR, f"{config_set}.pt")
         self.GRAPH_FILE = os.path.join(RUNS_DIR, f"{config_set}.png")
 
-    # RUn a specific configuration with multiple seeds, returning the average number of timesteps it took to reach the max reward.
+    # Log a message to the console and the log files.
+    def log(self, message):
+        timestamp = datetime.now().strftime(DATE_FORMAT)
+        print(f"{timestamp}: {message}")
+        with open(self.LOG_FILE, 'a') as f:
+            f.write(f"{timestamp}: {message}\n")
+        with open(AGGREGATE_FILE, 'a') as f:
+            f.write(f"{timestamp}: {message}\n")
+
+    # Run a specific configuration with multiple seeds, returning the average number of timesteps it took to reach the max reward.
     def run(self, training=True, render=False):
         durations = []
         total_layer_passes = []
         for _ in range(self.seeds):
+            # Generate random seed.
             seed = random.randint(0, 100000)
-            log_message = f"Seed: {seed}"
-            print(log_message)
-            with open(self.LOG_FILE, 'a') as f:
-                f.write(log_message + '\n')
-            with open(AGGREGATE_FILE, 'a') as f:
-                f.write(log_message + '\n')
+            self.log(f"Seed: {seed}")
             torch.manual_seed(seed)
             np.random.seed(seed)
             random.seed(seed)
+            # Run the agent with the given seed.
             duration, layer_passes = self.run_single(seed, training, render)
             durations.append(duration)
             total_layer_passes.append(layer_passes)
 
         avg_duration = np.mean(durations)
         avg_layer_passes = np.mean(total_layer_passes)
-        log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Average duration: {avg_duration:0.1f} timesteps, Average layer passes: {avg_layer_passes:0.1f} ({self.config_set})"
-        print(log_message)
-        with open(self.LOG_FILE, 'a') as f:
-            f.write(log_message + '\n')
-        with open(AGGREGATE_FILE, 'a') as f:
-            f.write(log_message + '\n')
-        
+        self.log(f"Average duration: {avg_duration:0.1f} timesteps, Average layer passes: {avg_layer_passes:0.1f} ({self.config_set})")
+
         return avg_duration, avg_layer_passes
 
     # Runs with a single seed, returning the number of timesteps it took to reach the max reward.
@@ -97,16 +98,8 @@ class Agent:
         if training:
             start_time = datetime.now()
             last_graph_update_time = start_time
+            self.log(f"Starting training with {len(self.layers)} layer(s)... ({self.config_set})")
 
-            log_message = f"{start_time.strftime(DATE_FORMAT)}: Starting training... ({self.config_set})"
-            print(log_message)
-            with open(self.LOG_FILE, 'w') as f:
-                f.write(log_message + '\n')
-            with open(AGGREGATE_FILE, 'a') as f:
-                f.write(log_message + '\n')
-
-        # TODO: try with flappy bird if cart pole works!
-        #env = gym.make("FlappyBird-v0", render_mode="human" if render else None)
         env = gym.make(self.env_id, render_mode="human" if render else None)
 
         num_states = env.observation_space.shape[0]
@@ -116,14 +109,18 @@ class Agent:
         layer_passes = 0
         episode_rewards = []
 
-        policy_network = LinearNN(num_states, num_actions, self.layers).to(device)
+        if self.network_type == 'linear':
+            policy_network = LinearNN(num_states, num_actions, self.layers).to(device)
+        elif self.network_type == 'resnet':
+            policy_network = LinearResNetNN(num_states, num_actions, self.layers).to(device)
+        else:
+            policy_network = NonLinearNN(num_states, num_actions, self.layers).to(device)
 
         if training:
             memory = ReplayMemory(maxlen=self.replay_memory_size)
             epsilon = self.epsilon_init
             epsilon_history = []
             best_reward = -1
-
             # Initialize the optimizer.
             self.optimizer = torch.optim.Adam(policy_network.parameters(), lr=self.alpha)
         else:
@@ -132,15 +129,18 @@ class Agent:
             policy_network.eval()
 
         for episode in itertools.count():
+            # Set the seed at the start just once.
             env_seed = seed if episode == 0 else None
-            s,_ = env.reset(seed=env_seed)
+            s, _ = env.reset(seed=env_seed)
             # Convert to tensor for pytorch.
             s = torch.tensor(s, dtype=torch.float, device=device)
 
             term = False
+            trunc = False
             episode_reward = 0
 
-            while not term and episode_reward < self.stop_on_reward:
+            # Episode end is either environment terminates (failed) or environment truncates (solved).
+            while not (term or trunc):
                 # Epsilon greedy action selection.
                 if training and random.random() < epsilon:
                     a = env.action_space.sample()
@@ -154,7 +154,7 @@ class Agent:
                         layer_passes += len(self.layers)
 
                 # Take the action.
-                s_next, r, term, _, _ = env.step(a.item())
+                s_next, r, term, trunc, _ = env.step(a.item())
                 episode_reward += r
                 # Convert to tensor for pytorch.
                 s_next = torch.tensor(s_next, dtype=torch.float, device=device)
@@ -171,13 +171,7 @@ class Agent:
 
             if training:
                 if episode_reward > best_reward:
-                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: New best reward: {episode_reward:0.1f} ({(episode_reward - best_reward) / best_reward * 100:+.1f}%) at episode {episode}, saving model..."
-                    print(log_message)
-                    with open(self.LOG_FILE, 'a') as f:
-                        f.write(log_message + '\n')
-                    with open(AGGREGATE_FILE, 'a') as f:
-                        f.write(log_message + '\n')
-
+                    self.log(f"New best reward: {episode_reward:0.1f} ({(episode_reward - best_reward) / best_reward * 100:+.1f}%) at episode {episode}, saving model...")
                     torch.save(policy_network.state_dict(), self.MODEL_FILE)
                     best_reward = episode_reward
 
@@ -192,7 +186,6 @@ class Agent:
                     self.save_rate_graph(episode_rewards, space=300, seed=seed)
                     self.save_rate_graph(episode_rewards, space=400, seed=seed)
                     self.save_rate_graph(episode_rewards, space=500, seed=seed)
-
                     last_graph_update_time = current_time
 
                 # Once we have enough experience.
@@ -204,18 +197,13 @@ class Agent:
                     # Decay epsilon.
                     epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
                     epsilon_history.append(epsilon)
-                        
-                # Stop training if reached the target reward.
-                if episode_reward >= self.stop_on_reward:
+
+                # Stop training if reached an average of target reward over the last 100.
+                if np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
                     return timestep, layer_passes
                 # Or if it's been too long.
                 if episode > self.stop_after_episodes:
-                    log_message = f"{datetime.now().strftime(DATE_FORMAT)}: Giving up after {episode} episodes."
-                    print(log_message)
-                    with open(self.LOG_FILE, 'a') as f:
-                        f.write(log_message + '\n')
-                    with open(AGGREGATE_FILE, 'a') as f:
-                        f.write(log_message + '\n')
+                    self.log(f"Giving up after {episode} episodes.")
                     return timestep, layer_passes
 
     # Calculate the target value and train the policy.
@@ -233,9 +221,9 @@ class Agent:
 
         with torch.no_grad():
             target = r + (1 - term) * self.gamma * policy_network(s_next).max(dim=1)[0]
-        
+
         prediction = policy_network(s).gather(dim=1, index=a.unsqueeze(dim=1)).squeeze()
-        
+
         # Calculate the loss.
         loss = self.loss_function(prediction, target)
 
@@ -244,6 +232,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
 
+    # Save the graph of the average reward and epsilon decay.
     def save_graph(self, episode_rewards, epsilon_history, seed=None):
         fig = plt.figure(1)
 
@@ -259,7 +248,7 @@ class Agent:
 
         # Plot epsilon decay (y) against episodes (x).
         plt.subplot(122)
-        plt.xlabel('Time Steps')
+        plt.xlabel('Episodes')
         plt.ylabel('Epsilon Decay')
         plt.plot(epsilon_history)
 
@@ -268,11 +257,11 @@ class Agent:
         fig.savefig(f'{self.GRAPH_FILE[:-4]}_{seed}.png')
         plt.close(fig)
 
+    # Save the graph of the rate of change in average reward.
     def save_rate_graph(self, episode_rewards, space=1, seed=None):
-        
         if len(episode_rewards) < space:
             return
-        
+
         fig = plt.figure(1)
 
         avg_rewards = np.zeros(len(episode_rewards))
@@ -282,27 +271,28 @@ class Agent:
         plt.subplot(111)
         plt.xlabel(f"Number of Episodes (x{space})")
         plt.ylabel('Change in Average Reward')
-        
+
         grad = np.gradient(avg_rewards[::space], space)
         plt.plot(grad)
-        
+
         avg_avg = np.zeros(len(grad))
         for i in range(10,len(grad)):
             avg_avg[i] = np.mean(grad[max(0, i-9):(i+1)])
         plt.plot(avg_avg)
-        
+
         # Plot epsilon decay (y) against episodes (x).
 
         plt.subplots_adjust(wspace=1.0, hspace=1.0)
 
-        if not os.path.exists(f"./runs/{self.config_name}/{self.config_set}"):
-            os.makedirs(f"./runs/{self.config_name}/{self.config_set}")
+        if not os.path.exists(f"./runs/{self.config_file}/{self.config_set}"):
+            os.makedirs(f"./runs/{self.config_file}/{self.config_set}")
 
-        fig.savefig(f"./runs/{self.config_name}/{self.config_set}/{space}_rate_{seed}.png")
+        fig.savefig(f"./runs/{self.config_file}/{self.config_set}/{space}_rate_{seed}.png")
         plt.close(fig)
 
+
 # Save the aggregate graph of the number of layers vs. the average duration taken to reach the max reward.
-def save_aggregate_graph(data, filename):
+def save_aggregate_graph(data, filename, xLabel, yLabel):
     fig = plt.figure(1)
     keys = data.keys()
     values = data.values()
@@ -311,82 +301,59 @@ def save_aggregate_graph(data, filename):
     plt.bar(x, values, color='blue')
     plt.xticks(x, keys)
 
-    plt.xlabel('Number of Layers')
-    plt.ylabel('Average Duration to Reach Max Reward')
+    plt.xlabel(xLabel)
+    plt.ylabel(yLabel)
     fig.savefig(os.path.join(RUNS_DIR, filename))
     plt.close(fig)
 
 
 if __name__ == '__main__':
     # Parse command line arguments.
-    parser = argparse.ArgumentParser(description='Train or test a DQN agent.')
-    parser.add_argument('file', help="Name of the config file.")
-    parser.add_argument('config', help='Name of config set in config file.')
+    parser = argparse.ArgumentParser(description='Train or test a Q Learning agent.')
+    parser.add_argument('config', help="Name of the config file.")
+    parser.add_argument('--network-type', choices=['linear', 'resnet', 'nonlinear'], help="Type of neural network to use.")
     parser.add_argument('--train', action='store_true', help='Train the agent.')
-    parser.add_argument('--all', action='store_true', help='Run full training suite.')
-    parser.add_argument('--max', action='store_true', help='Run config set for one to specified number of layers.')
+    parser.add_argument('--power', action='store_true', help='Run config set for exponential intervals of layers (default is linear).')
     args = parser.parse_args()
 
     # Clean out the runs directory.
     for file in os.listdir(RUNS_DIR):
-        
-        # by default remove files
+        # By default remove files.
         try:
-        
             os.remove(os.path.join(RUNS_DIR, file))
-            
-        # remove directories if present (don't need to be empty)
+        # Remove directories if present (don't need to be empty).
         except:
-            
             shutil.rmtree(os.path.join(RUNS_DIR, file))
 
-    # run all training configs OR run incremental layers
-    if args.all or args.max:
-        with open(f'{args.file}.yml', 'r') as f:
-            config = yaml.safe_load(f)
+    with open(f'{args.config}.yml', 'r') as f:
+        config = yaml.safe_load(f)
 
-            # Track the number of layers and resulting duration taken to reach the max reward.
-            avg_durations = {}
-            # Do similar for the number of layers that data is passed through.
-            avg_layer_passes = {}
-            
-            # If using --max flag, include only one config set in your config file!
-            if args.max:
-                
-                # this is why we can only have one config set in the file (no guarantee on ordering of dict keys)
-                only_config = list(config.keys())[0]
-                agent = Agent(config_set=only_config, config_name=f'{args.file}.yml')
-                max_layers = len(agent.layers)
+        # Track the number of layers and resulting duration taken to reach the max reward.
+        avg_durations = {}
+        # Do similar for the number of layers that data is passed through.
+        avg_layer_passes = {}
 
-                print(f"BEGINNNING TRAINING\nTOTAL NUMBER OF LAYERS == {max_layers}")
-                
-                for i in range(1,max_layers+1):
-                    
-                    print(f"\nLAYERS = {i}\n")
-                    agent = Agent(config_set=only_config, config_name=f'{args.file}.yml', layers=i)
-                    avg_duration, avg_layer_pass = agent.run(training=True)
-                    avg_durations[i] = avg_duration
-                    avg_layer_passes[i] = avg_layer_pass
-                    save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
-                    save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")
-                
+        # Local function to run an agent with a specific number of layers.
+        def run_agent(param_set, i):
+            agent = Agent(config_set=param_set, config_file=f'{args.config}.yml', layers=i, network_type=args.network_type)
+            avg_duration, avg_layer_pass = agent.run(training=args.train, render=not args.train)
+            avg_durations[i] = avg_duration
+            avg_layer_passes[i] = avg_layer_pass
+            save_aggregate_graph(avg_durations, "aggregate_timesteps.png", "Size of Network (Layers)", "Performance (Timesteps)")
+            save_aggregate_graph(avg_layer_passes, "aggregate_layers.png", "Size of Network (Layers)", "Energy (Total Number of Layers Used During Learning)")
+
+        for param_set in config:
+            layer_increment = config[param_set]['layer_increment']
+            min_layers = config[param_set]['min_layers']
+            max_layers = config[param_set]['max_layers']
+            # Exponential.
+            if args.power:
+                exponent = 0
+                while (i := layer_increment**exponent) <= max_layers:
+                    if i >= min_layers:
+                        run_agent(param_set, i)
+                    exponent += 1
+            # Linear.
             else:
-            
-                for param_set in config:
-
-                    print(param_set)
-                    agent = Agent(config_set=param_set, config_name=f'{args.file}.yml')
-                    avg_duration, avg_layer_pass = agent.run(training=True)
-                    avg_durations[config[param_set]['layers']] = avg_duration
-                    avg_layer_passes[config[param_set]['layers']] = avg_layer_pass
-                    save_aggregate_graph(avg_durations, "aggregate_timesteps.png")
-                    save_aggregate_graph(avg_layer_passes, "aggregate_layers.png")        
-
-                
-    else:
-        agent = Agent(config_set=args.config, config_name=f'{args.file}.yml')
-
-        if args.train:
-            agent.run(training=True)
-        else:
-            agent.run(training=False, render=True)
+                for i in range(min_layers, max_layers + 1, layer_increment):
+                    run_agent(param_set, i)

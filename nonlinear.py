@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 # Residual block for an adaptation of ResNet to our linear network.
 class ResidualBlock(nn.Module):
@@ -33,15 +34,15 @@ class ResidualBlock(nn.Module):
 
         return x
 
-# Implementation of a linear neural network for approximating Q-Learning.
-class LinearNN(nn.Module):
+# Implementation of a non-linear neural network for approximating Q-Learning.
+class NonLinearNN(nn.Module):
     def __init__(self, input_dim, output_dim, layers=[]):
         '''
         input_dim: number of dimensions for input to network
         output_dim: number of dimensions for output from network
         layers: list of dims for each hidden layer as int
         '''
-        super(LinearNN, self).__init__()
+        super(NonLinearNN, self).__init__()
 
         # layers for model
         self.layers = nn.ParameterList()
@@ -68,7 +69,7 @@ class LinearNN(nn.Module):
 
 if __name__ == '__main__':
     # Test the model.
-    model = LinearNN(4, 2, [256, 256, 128])
+    model = NonLinearNN(4, 2, [256, 256, 128])
     print(model)
     # Test with a random input.
     print(model(torch.randn(1, 4)))
