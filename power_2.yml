@@ -7,7 +7,7 @@ cartpole1-power2:
   epsilon_min: 0.05
   alpha: 0.01
   gamma: 0.99
-  hidden_dim: 10
+  hidden_dim: 32
   layer_increment: 2
   min_layers: 1
   max_layers: 128

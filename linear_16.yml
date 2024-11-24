@@ -7,7 +7,7 @@ cartpole1-linear16:
   epsilon_min: 0.05
   alpha: 0.01
   gamma: 0.99
-  hidden_dim: 10
+  hidden_dim: 32
   layer_increment: 1
   min_layers: 1
   max_layers: 16

@@ -200,10 +200,11 @@ class Agent:
 
                 # Stop training if reached an average of target reward over the last 100.
                 if np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
+                    self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
                     return timestep, layer_passes
                 # Or if it's been too long.
                 if episode > self.stop_after_episodes:
-                    self.log(f"Giving up after {episode} episodes.")
+                    self.log(f"Giving up after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
                     return timestep, layer_passes
 
     # Calculate the target value and train the policy.
@@ -284,10 +285,12 @@ class Agent:
 
         plt.subplots_adjust(wspace=1.0, hspace=1.0)
 
-        if not os.path.exists(f"./runs/{self.config_file}/{self.config_set}"):
-            os.makedirs(f"./runs/{self.config_file}/{self.config_set}")
+        # Remove .yml file extension from file name.
+        file_name = self.config_file.split('.')[0]
+        if not os.path.exists(f"./runs/{file_name}/{self.config_set}"):
+            os.makedirs(f"./runs/{file_name}/{self.config_set}")
 
-        fig.savefig(f"./runs/{self.config_file}/{self.config_set}/{space}_rate_{seed}.png")
+        fig.savefig(f"./runs/{file_name}/{self.config_set}/{space}_rate_{seed}.png")
         plt.close(fig)
 
 
@@ -324,6 +327,9 @@ if __name__ == '__main__':
         # Remove directories if present (don't need to be empty).
         except:
             shutil.rmtree(os.path.join(RUNS_DIR, file))
+
+    # Copy the config file to the runs directory.
+    shutil.copy(f'{args.config}.yml', RUNS_DIR)
 
     with open(f'{args.config}.yml', 'r') as f:
         config = yaml.safe_load(f)
