@@ -1,5 +1,5 @@
 cartpole1-power2:
-  env_id: CartPole-v1
+  env_id: CartPole-v0
   replay_memory_size: 100000
   mini_batch_size: 32
   epsilon_init: 1
@@ -11,6 +11,6 @@ cartpole1-power2:
   layer_increment: 2
   min_layers: 1
   max_layers: 128
-  stop_on_reward: 500
+  stop_on_reward: 195
   stop_after_episodes: 200000
   seeds: 5
