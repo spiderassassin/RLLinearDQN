@@ -11,6 +11,7 @@ import torch
 import yaml
 from experience_replay import ReplayMemory
 from datetime import datetime, timedelta
+from gymnasium.vector import SyncVectorEnv
 from nonlinear import NonLinearNN
 from linear import LinearNN
 from linear_resnet import LinearResNetNN
@@ -31,15 +32,16 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # The RL agent that will interact with the environment.
 class Agent:
-    def __init__(self, config_set, config_file, layers, network_type='linear'):
+    def __init__(self, config_set, config_file, layers, network_type='linear', num_envs=1):
         with open(config_file, 'r') as f:
             self.config = yaml.safe_load(f)[config_set]
 
         self.config_set = config_set
         self.config_file = config_file
+        self.num_envs = num_envs
         self.env_id = self.config['env_id']
         self.replay_memory_size = self.config['replay_memory_size']
-        self.mini_batch_size = self.config['mini_batch_size']
+        self.mini_batch_size = self.config['mini_batch_size'] * num_envs
         self.epsilon_init = self.config['epsilon_init']
         self.epsilon_decay = self.config['epsilon_decay']
         self.epsilon_min = self.config['epsilon_min']
@@ -100,10 +102,10 @@ class Agent:
             last_graph_update_time = start_time
             self.log(f"Starting training with {len(self.layers)} layer(s)... ({self.config_set})")
 
-        env = gym.make(self.env_id, render_mode="human" if render else None)
+        envs = gym.make_vec(self.env_id, render_mode="human" if render else None, num_envs=self.num_envs, vectorization_mode="async")
 
-        num_states = env.observation_space.shape[0]
-        num_actions = env.action_space.n
+        num_states = envs.single_observation_space.shape[0]
+        num_actions = envs.single_action_space.n
 
         timestep = 0
         layer_passes = 0
@@ -131,49 +133,62 @@ class Agent:
         for episode in itertools.count():
             # Set the seed at the start just once.
             env_seed = seed if episode == 0 else None
-            s, _ = env.reset(seed=env_seed)
+            s, _ = envs.reset(seed=env_seed)
+            print("s", s)
             # Convert to tensor for pytorch.
             s = torch.tensor(s, dtype=torch.float, device=device)
 
-            term = False
-            trunc = False
-            episode_reward = 0
+            term = np.zeros(self.num_envs, dtype=bool)
+            trunc = np.zeros(self.num_envs, dtype=bool)
+            episode_reward = np.zeros(self.num_envs)
 
             # Episode end is either environment terminates (failed) or environment truncates (solved).
-            while not (term or trunc):
+            while not np.all(term | trunc):
                 # Epsilon greedy action selection.
-                if training and random.random() < epsilon:
-                    a = env.action_space.sample()
+                if training and np.random.rand(self.num_envs) < epsilon:
+                    a = np.array([envs.single_action_space.sample() for _ in range(self.num_envs)])
+                    print("a", a)
                     # Convert to tensor for pytorch.
-                    a = torch.tensor(a, dtype=torch.long, device=device)
+                    # a = torch.tensor(a, dtype=torch.long, device=device)
                 else:
                     # Save time, calculates gradient automatically, but don't need it for evaluation.
                     with torch.no_grad():
                         # Argmax index corresponds to the optimal action.
-                        a = policy_network(s.unsqueeze(dim=0)).squeeze().argmax()
-                        layer_passes += len(self.layers)
+                        a = policy_network(s).argmax(dim=1).cpu().numpy()
+                        # a = policy_network(s.unsqueeze(dim=0)).squeeze().argmax()
+                        layer_passes += len(self.layers) * self.num_envs
 
                 # Take the action.
-                s_next, r, term, trunc, _ = env.step(a.item())
+                s_next, r, term, trunc, _ = envs.step(a)
+                print("s_next", s_next)
+                print("r", r)
+                print("term", term)
+                print("trunc", trunc)
                 episode_reward += r
+                print("episode_reward", episode_reward)
                 # Convert to tensor for pytorch.
-                s_next = torch.tensor(s_next, dtype=torch.float, device=device)
-                r = torch.tensor(r, dtype=torch.float, device=device)
+                # s_next = torch.tensor(s_next, dtype=torch.float, device=device)
+                # r = torch.tensor(r, dtype=torch.float, device=device)
 
                 if training:
-                    memory.append(s, a, r, s_next, term)
-                    pass
+                    for i in range(self.num_envs):
+                        print("Appending to memory")
+                        print(s[i], a[i], r[i], s_next[i], term[i])
+                        memory.append(s[i], a[i], r[i], s_next[i], term[i])
 
                 s = s_next
-                timestep += 1
+                timestep += self.num_envs
 
             episode_rewards.append(episode_reward)
+            print("episode_rewards", episode_rewards)
 
             if training:
-                if episode_reward > best_reward:
-                    self.log(f"New best reward: {episode_reward:0.1f} ({(episode_reward - best_reward) / best_reward * 100:+.1f}%) at episode {episode}, saving model...")
+                best_episode_reward = np.max(episode_reward)
+                print("best_episode_reward", best_episode_reward)
+                if best_episode_reward > best_reward:
+                    self.log(f"New best reward: {best_episode_reward:0.1f} ({(best_episode_reward - best_reward) / best_reward * 100:+.1f}%) at episode {episode}, saving model...")
                     torch.save(policy_network.state_dict(), self.MODEL_FILE)
-                    best_reward = episode_reward
+                    best_reward = best_episode_reward
 
                 # Update graph every so often.
                 current_time = datetime.now()
@@ -199,7 +214,7 @@ class Agent:
                     epsilon_history.append(epsilon)
 
                 # Stop training if reached an average of target reward over the last 100.
-                if np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
+                if episode >= 100 and np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
                     self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
                     return timestep, layer_passes
                 # Or if it's been too long.
@@ -211,6 +226,7 @@ class Agent:
     def optimize(self, mini_batch, policy_network):
         # Extract each component of the entire mini batch.
         s, a, r, s_next, term = zip(*mini_batch)
+        print("s", s)
 
         # Convert to tensors.
         s = torch.stack(s)
