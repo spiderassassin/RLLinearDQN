@@ -165,3 +165,5 @@ cython_debug/
 runs/
 # Don't ignore the .log file in the results folder that was previously excluded
 !results/**/*.log
+plots/output/
+plots/input.csv
