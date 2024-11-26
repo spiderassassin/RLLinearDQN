@@ -9,7 +9,7 @@ cartpole1-linear16:
   gamma: 0.99
   hidden_dim: 32
   layer_increment: 1
-  min_layers: 8
+  min_layers: 1
   max_layers: 16
   stop_on_reward: 195
   stop_after_episodes: 200000
