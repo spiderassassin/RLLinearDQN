@@ -182,10 +182,10 @@ class Agent:
                     self.save_rate_graph(episode_rewards, space=1, seed=seed)
                     self.save_rate_graph(episode_rewards, space=50, seed=seed)
                     self.save_rate_graph(episode_rewards, space=100, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=200, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=300, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=400, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=500, seed=seed)
+                    #self.save_rate_graph(episode_rewards, space=200, seed=seed)
+                    #self.save_rate_graph(episode_rewards, space=300, seed=seed)
+                    #self.save_rate_graph(episode_rewards, space=400, seed=seed)
+                    #self.save_rate_graph(episode_rewards, space=500, seed=seed)
                     last_graph_update_time = current_time
 
                 # Once we have enough experience.

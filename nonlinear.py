@@ -8,6 +8,7 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         self.fc1 = nn.Linear(input_dim, output_dim)
         self.ln1 = nn.LayerNorm(output_dim)
+        self.ac1 = nn.ReLU(output_dim)
         # Skipping the typical ReLU activation here to stay linear.
         self.fc2 = nn.Linear(output_dim, output_dim)
         self.ln2 = nn.LayerNorm(output_dim)
@@ -21,11 +22,11 @@ class ResidualBlock(nn.Module):
             )
 
     def forward(self, x):
-        # Keep everything linear here as well.
+       
         identity = x
         x = self.ln1(self.fc1(x))
+        x = self.ac1(x)
         x = self.ln2(self.fc2(x))
-
         if self.downsample is not None:
             identity = self.downsample(identity)
 
