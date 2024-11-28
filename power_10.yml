@@ -12,5 +12,6 @@ cartpole1-power10:
   min_layers: 1
   max_layers: 1000
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 200000
   seeds: 5
