@@ -12,5 +12,6 @@ cartpole1-linear16:
   min_layers: 1
   max_layers: 16
   stop_on_reward: 195
+  use_max_reward: false
   stop_after_episodes: 200000
   seeds: 5

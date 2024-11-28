@@ -50,6 +50,7 @@ class Agent:
         self.min_layers = self.config['min_layers']
         self.max_layers = self.config['max_layers']
         self.stop_on_reward = self.config['stop_on_reward']
+        self.use_max_reward = self.config['use_max_reward']
         self.stop_after_episodes = self.config['stop_after_episodes']
         self.seeds = self.config['seeds']
 
@@ -198,8 +199,12 @@ class Agent:
                     epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
                     epsilon_history.append(epsilon)
 
+                # Stop training if reached the max reward.
+                if self.use_max_reward and best_reward >= self.stop_on_reward:
+                    self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
+                    return timestep, layer_passes
                 # Stop training if reached an average of target reward over the last 100.
-                if np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
+                if not self.use_max_reward and np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
                     self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
                     return timestep, layer_passes
                 # Or if it's been too long.
