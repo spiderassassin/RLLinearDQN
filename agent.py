@@ -12,9 +12,12 @@ import yaml
 from experience_replay import ReplayMemory
 from datetime import datetime, timedelta
 from nonlinear import NonLinearNN
-from linear import LinearNN
+from linear_copy import LinearNN
 from linear_resnet import LinearResNetNN
+from linear_norm import LinearNormNN
+from linear_res_no_norm import LinearResNN
 from torch import nn
+import torchprofile
 
 DATE_FORMAT = "%m-%d %H:%M:%S"
 RUNS_DIR = "runs"
@@ -52,8 +55,30 @@ class Agent:
         self.stop_on_reward = self.config['stop_on_reward']
         self.stop_after_episodes = self.config['stop_after_episodes']
         self.seeds = self.config['seeds']
+        self.num_flops = 0
+        
+        # Try grabbing "block" type from config. If it doesn't have it, proceed
+        # as normal
+        try:
+            self.block = self.config['block']
+            
+            # Because basic blocks have 2 layers, halve the number of layers
+            # Resnet implementation generates as many blocks as layers supplied
+            # need to subtract 2 from num layers to account for input and output layers
+            if self.block == "Basic":
+                self.layers = [self.hidden_dim for _ in range(max(1, (layers - 2)//2))]
+                
+            # same as basic block but bottleneck uses 3 layers instead
+            elif self.block == "Bottleneck":
+                self.layers = [self.hidden_dim for _ in range(max(1, (layers - 2)//3))]
+                
+            else:
+                self.layers = [self.hidden_dim for _ in range(layers)]
 
-        self.layers = [self.hidden_dim for _ in range(layers)]
+        except:
+            self.block = "Basic"
+            self.layers = [self.hidden_dim for _ in range(layers)]
+            
         self.network_type = network_type
         self.loss_function = nn.MSELoss()
         self.optimizer = None
@@ -75,6 +100,7 @@ class Agent:
     def run(self, training=True, render=False):
         durations = []
         total_layer_passes = []
+        all_flops = []
         for _ in range(self.seeds):
             # Generate random seed.
             seed = random.randint(0, 100000)
@@ -83,15 +109,17 @@ class Agent:
             np.random.seed(seed)
             random.seed(seed)
             # Run the agent with the given seed.
-            duration, layer_passes = self.run_single(seed, training, render)
+            duration, layer_passes, num_flops = self.run_single(seed, training, render)
             durations.append(duration)
             total_layer_passes.append(layer_passes)
+            all_flops.append(num_flops)
 
         avg_duration = np.mean(durations)
         avg_layer_passes = np.mean(total_layer_passes)
-        self.log(f"Average duration: {avg_duration:0.1f} timesteps, Average layer passes: {avg_layer_passes:0.1f} ({self.config_set})")
+        avg_flops = np.mean(all_flops)
+        self.log(f"Average duration: {avg_duration:0.1f} timesteps, Average layer passes: {avg_layer_passes:0.1f}, Average number of FLOPs: {avg_flops:0.1f} ({self.config_set})")
 
-        return avg_duration, avg_layer_passes
+        return avg_duration, avg_layer_passes, avg_flops
 
     # Runs with a single seed, returning the number of timesteps it took to reach the max reward.
     def run_single(self, seed, training=True, render=False):
@@ -112,9 +140,16 @@ class Agent:
         if self.network_type == 'linear':
             policy_network = LinearNN(num_states, num_actions, self.layers).to(device)
         elif self.network_type == 'resnet':
-            policy_network = LinearResNetNN(num_states, num_actions, self.layers).to(device)
+            policy_network = LinearResNetNN(num_states, num_actions, self.layers, block=self.block).to(device)
+        elif self.network_type == 'res_only':
+            policy_network = LinearResNN(num_states, num_actions, self.layers).to(device)
+        elif self.network_type == 'norm_only':
+            policy_network = LinearNormNN(num_states, num_actions, self.layers).to(device)
         else:
-            policy_network = NonLinearNN(num_states, num_actions, self.layers).to(device)
+            # policy_network = NonLinearNN(num_states, num_actions, self.layers).to(device)
+            policy_network = LinearResNetNN(num_states, num_actions, self.layers, block=self.block, nonlinear=True).to(device)
+
+        num_flops = 0
 
         if training:
             memory = ReplayMemory(maxlen=self.replay_memory_size)
@@ -151,6 +186,7 @@ class Agent:
                     with torch.no_grad():
                         # Argmax index corresponds to the optimal action.
                         a = policy_network(s.unsqueeze(dim=0)).squeeze().argmax()
+                        num_flops += (torchprofile.profile_macs(policy_network, s.unsqueeze(dim=0)) * 2)
                         layer_passes += len(self.layers)
 
                 # Take the action.
@@ -179,13 +215,7 @@ class Agent:
                 current_time = datetime.now()
                 if current_time - last_graph_update_time > timedelta(seconds=10):
                     self.save_graph(episode_rewards, epsilon_history, seed)
-                    self.save_rate_graph(episode_rewards, space=1, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=50, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=100, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=200, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=300, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=400, seed=seed)
-                    self.save_rate_graph(episode_rewards, space=500, seed=seed)
+        
                     last_graph_update_time = current_time
 
                 # Once we have enough experience.
@@ -199,13 +229,14 @@ class Agent:
                     epsilon_history.append(epsilon)
 
                 # Stop training if reached an average of target reward over the last 100.
-                if np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
-                    self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
-                    return timestep, layer_passes
+                # IMPROMPTU MODIFICATION: stop once max reward recieved once
+                if episode_rewards[-1] >= self.stop_on_reward:
+                    self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep}, layer passes: {layer_passes}, and number of FLOPs: {num_flops}.")
+                    return timestep, layer_passes, num_flops
                 # Or if it's been too long.
                 if episode > self.stop_after_episodes:
-                    self.log(f"Giving up after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
-                    return timestep, layer_passes
+                    self.log(f"Giving up after {episode} episodes with number of timesteps: {timestep}, layer passes: {layer_passes}, and number of FLOPs: {num_flops}.")
+                    return timestep, layer_passes, num_flops
 
     # Calculate the target value and train the policy.
     def optimize(self, mini_batch, policy_network):
@@ -301,7 +332,8 @@ def save_aggregate_graph(data, filename, xLabel, yLabel):
     values = data.values()
     x = range(len(keys))
     # Create a bar chart of the data, with the layers as categories.
-    plt.bar(x, values, color='blue')
+    plt.bar(x, values, color='blue') 
+        
     plt.xticks(x, keys)
 
     plt.xlabel(xLabel)
@@ -314,22 +346,26 @@ if __name__ == '__main__':
     # Parse command line arguments.
     parser = argparse.ArgumentParser(description='Train or test a Q Learning agent.')
     parser.add_argument('config', help="Name of the config file.")
-    parser.add_argument('--network-type', choices=['linear', 'resnet', 'nonlinear'], help="Type of neural network to use.")
+    parser.add_argument('--network-type', choices=['linear', 'resnet', 'nonlinear', 'res_only', 'norm_only'], help="Type of neural network to use.")
     parser.add_argument('--train', action='store_true', help='Train the agent.')
     parser.add_argument('--power', action='store_true', help='Run config set for exponential intervals of layers (default is linear).')
     args = parser.parse_args()
 
-    # Clean out the runs directory.
-    for file in os.listdir(RUNS_DIR):
-        # By default remove files.
-        try:
-            os.remove(os.path.join(RUNS_DIR, file))
-        # Remove directories if present (don't need to be empty).
-        except:
-            shutil.rmtree(os.path.join(RUNS_DIR, file))
+
+    # Don't remove the runs directory if you want to save multiple results in a row
+    # # Clean out the runs directory.
+    # for file in os.listdir(RUNS_DIR):
+    #     # By default remove files.
+    #     try:
+    #         os.remove(os.path.join(RUNS_DIR, file))
+    #     # Remove directories if present (don't need to be empty).
+    #     except:
+    #         shutil.rmtree(os.path.join(RUNS_DIR, file))
 
     # Copy the config file to the runs directory.
     shutil.copy(f'{args.config}.yml', RUNS_DIR)
+    
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     with open(f'{args.config}.yml', 'r') as f:
         config = yaml.safe_load(f)
@@ -338,15 +374,19 @@ if __name__ == '__main__':
         avg_durations = {}
         # Do similar for the number of layers that data is passed through.
         avg_layer_passes = {}
+        # Do again but for FLOPs
+        num_flops = {}
 
         # Local function to run an agent with a specific number of layers.
         def run_agent(param_set, i):
             agent = Agent(config_set=param_set, config_file=f'{args.config}.yml', layers=i, network_type=args.network_type)
-            avg_duration, avg_layer_pass = agent.run(training=args.train, render=not args.train)
+            avg_duration, avg_layer_pass, avg_flops = agent.run(training=args.train, render=not args.train)
             avg_durations[i] = avg_duration
             avg_layer_passes[i] = avg_layer_pass
+            num_flops[i] = avg_flops
             save_aggregate_graph(avg_durations, "aggregate_timesteps.png", "Size of Network (Layers)", "Performance (Timesteps)")
             save_aggregate_graph(avg_layer_passes, "aggregate_layers.png", "Size of Network (Layers)", "Energy (Total Number of Layers Used During Learning)")
+            save_aggregate_graph(num_flops, f"flops_per_layer_{agent.config_set}.png", "Size of Network (Layers)", "Number of FLOPs")
 
         for param_set in config:
             layer_increment = config[param_set]['layer_increment']
