@@ -1,0 +1,2 @@
+For 1000 layers, it was run using only one seed (it took 5 hours).
+The rest were run using 5 seeds.

@@ -53,6 +53,7 @@ class Agent:
         self.min_layers = self.config['min_layers']
         self.max_layers = self.config['max_layers']
         self.stop_on_reward = self.config['stop_on_reward']
+        self.use_max_reward = self.config['use_max_reward']
         self.stop_after_episodes = self.config['stop_after_episodes']
         self.seeds = self.config['seeds']
         self.num_flops = 0
@@ -215,7 +216,6 @@ class Agent:
                 current_time = datetime.now()
                 if current_time - last_graph_update_time > timedelta(seconds=10):
                     self.save_graph(episode_rewards, epsilon_history, seed)
-        
                     last_graph_update_time = current_time
 
                 # Once we have enough experience.
@@ -228,9 +228,12 @@ class Agent:
                     epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
                     epsilon_history.append(epsilon)
 
+                # Stop training if reached the max reward.
+                if self.use_max_reward and best_reward >= self.stop_on_reward:
+                    self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep} and layer passes: {layer_passes}.")
+                    return timestep, layer_passes
                 # Stop training if reached an average of target reward over the last 100.
-                # IMPROMPTU MODIFICATION: stop once max reward recieved once
-                if episode_rewards[-1] >= self.stop_on_reward:
+                if not self.use_max_reward and np.mean(episode_rewards[-100:]) >= self.stop_on_reward:
                     self.log(f"Reached target after {episode} episodes with number of timesteps: {timestep}, layer passes: {layer_passes}, and number of FLOPs: {num_flops}.")
                     return timestep, layer_passes, num_flops
                 # Or if it's been too long.
