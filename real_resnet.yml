@@ -13,6 +13,7 @@ cartpole0-lin-res-18:
   max_layers: 18
   block: "Basic"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -31,6 +32,7 @@ cartpole0-lin_res-34:
   max_layers: 34
   block: "Basic"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -50,6 +52,7 @@ cartpole0-lin_bot-50:
   max_layers: 50
   block: "Bottleneck"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -68,6 +71,7 @@ cartpole0-lin_bot-101:
   max_layers: 101
   block: "Bottleneck"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -86,5 +90,6 @@ cartpole0-lin_bot-152:
   max_layers: 152
   block: "Bottleneck"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
