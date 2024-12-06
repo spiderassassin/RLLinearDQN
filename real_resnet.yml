@@ -1,0 +1,90 @@
+cartpole0-lin-res-18:
+  env_id: CartPole-v0
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 32
+  layer_increment: 1
+  min_layers: 18
+  max_layers: 18
+  block: "Basic"
+  stop_on_reward: 195
+  stop_after_episodes: 5000
+  seeds: 5
+
+cartpole0-lin_res-34:
+  env_id: CartPole-v0
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 32
+  layer_increment: 1
+  min_layers: 34
+  max_layers: 34
+  block: "Basic"
+  stop_on_reward: 195
+  stop_after_episodes: 5000
+  seeds: 5
+
+
+cartpole0-lin_bot-50:
+  env_id: CartPole-v0
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 32
+  layer_increment: 1
+  min_layers: 50
+  max_layers: 50
+  block: "Bottleneck"
+  stop_on_reward: 195
+  stop_after_episodes: 5000
+  seeds: 5
+
+cartpole0-lin_bot-101:
+  env_id: CartPole-v0
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 32
+  layer_increment: 1
+  min_layers: 101
+  max_layers: 101
+  block: "Bottleneck"
+  stop_on_reward: 195
+  stop_after_episodes: 5000
+  seeds: 5
+
+cartpole0-lin_bot-152:
+  env_id: CartPole-v0
+  replay_memory_size: 100000
+  mini_batch_size: 32
+  epsilon_init: 1
+  epsilon_decay: 0.9995
+  epsilon_min: 0.05
+  alpha: 0.01
+  gamma: 0.99
+  hidden_dim: 32
+  layer_increment: 1
+  min_layers: 152
+  max_layers: 152
+  block: "Bottleneck"
+  stop_on_reward: 195
+  stop_after_episodes: 5000
+  seeds: 5
