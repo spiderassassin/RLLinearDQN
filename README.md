@@ -19,6 +19,12 @@ To use config from yml file:
 pip install pyyaml
 ```
 
+For FLOP counting:
+
+```
+pip install torchprofile
+```
+
 ## Running
 
 The provided `launch.json` file can be used to debug the program through VS Code. In the Run and Debug tab, just set it as the configuration file, then click the green play button.

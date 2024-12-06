@@ -11,11 +11,7 @@ import torch
 import yaml
 from experience_replay import ReplayMemory
 from datetime import datetime, timedelta
-from nonlinear import NonLinearNN
-from linear_copy import LinearNN
 from linear_resnet import LinearResNetNN
-from linear_norm import LinearNormNN
-from linear_res_no_norm import LinearResNN
 from torch import nn
 import torchprofile
 
@@ -138,14 +134,8 @@ class Agent:
         layer_passes = 0
         episode_rewards = []
 
-        if self.network_type == 'linear':
-            policy_network = LinearNN(num_states, num_actions, self.layers).to(device)
-        elif self.network_type == 'resnet':
+        if self.network_type == 'resnet':
             policy_network = LinearResNetNN(num_states, num_actions, self.layers, block=self.block).to(device)
-        elif self.network_type == 'res_only':
-            policy_network = LinearResNN(num_states, num_actions, self.layers).to(device)
-        elif self.network_type == 'norm_only':
-            policy_network = LinearNormNN(num_states, num_actions, self.layers).to(device)
         else:
             # policy_network = NonLinearNN(num_states, num_actions, self.layers).to(device)
             policy_network = LinearResNetNN(num_states, num_actions, self.layers, block=self.block, nonlinear=True).to(device)

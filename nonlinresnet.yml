@@ -13,6 +13,7 @@ cartpole0-nl-res-18:
   max_layers: 18
   block: "Basic"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -31,6 +32,7 @@ cartpole0-nl_res-34:
   max_layers: 34
   block: "Basic"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -50,6 +52,7 @@ cartpole0-nl_bot-50:
   max_layers: 50
   block: "Bottleneck"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -68,6 +71,7 @@ cartpole0-nl_bot-101:
   max_layers: 101
   block: "Bottleneck"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
 
@@ -81,10 +85,11 @@ cartpole0-nl_bot-152:
   alpha: 0.01
   gamma: 0.99
   hidden_dim: 32
-  layer_increment: 11
+  layer_increment: 1
   min_layers: 152
   max_layers: 152
   block: "Bottleneck"
   stop_on_reward: 195
+  use_max_reward: true
   stop_after_episodes: 5000
   seeds: 5
